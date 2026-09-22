@@ -1,16 +1,16 @@
 package com.poxi.mobile
 
 import android.content.Context
-import com.rementia.openwakeword.lib.DetectionMode
 import com.rementia.openwakeword.lib.WakeWordEngine
-import com.rementia.openwakeword.lib.WakeWordModel
+import com.rementia.openwakeword.lib.model.DetectionMode
+import com.rementia.openwakeword.lib.model.WakeWordModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.cancel
 
 class PoxiWakeWordEngine(
     private val context: Context
@@ -25,9 +25,7 @@ class PoxiWakeWordEngine(
     private var detectionJob: Job? = null
 
     fun initialize(): Boolean {
-
         return try {
-
             val models =
                 listOf(
                     WakeWordModel(
@@ -47,9 +45,7 @@ class PoxiWakeWordEngine(
                 )
 
             true
-
         } catch (_: Exception) {
-
             engine = null
             false
         }
@@ -67,7 +63,6 @@ class PoxiWakeWordEngine(
             engine ?: return false
 
         return try {
-
             detectionJob?.cancel()
 
             detectionJob =
@@ -87,15 +82,12 @@ class PoxiWakeWordEngine(
                 }
 
             true
-
         } catch (_: Exception) {
-
             false
         }
     }
 
     fun stop() {
-
         try {
             engine?.stop()
         } catch (_: Exception) {
@@ -106,7 +98,6 @@ class PoxiWakeWordEngine(
     }
 
     fun release() {
-
         try {
             engine?.stop()
             engine?.release()
