@@ -5,3 +5,6 @@ local.properties
 *.iml
 .idea/
 .DS_Store
+
+# POXI trained wake-word model
+app/src/main/assets/hey_poxi.onnx

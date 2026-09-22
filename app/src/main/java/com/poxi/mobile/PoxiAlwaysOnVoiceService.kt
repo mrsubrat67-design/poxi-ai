@@ -20,60 +20,237 @@ class PoxiAlwaysOnVoiceService : Service() {
     companion object {
         private const val CHANNEL_ID = "poxi_voice"
         private const val NOTIFICATION_ID = 1001
+
+        private const val LISTEN_DELAY = 700L
+        private const val TTS_RESTART_DELAY = 1200L
     }
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    private val mainHandler =
+        Handler(Looper.getMainLooper())
 
-    private var speechRecognizer: SpeechRecognizer? = null
-    private var textToSpeech: TextToSpeech? = null
+    private var speechRecognizer:
+        SpeechRecognizer? = null
 
-    private lateinit var router: PoxiCommandRouter
+    private var textToSpeech:
+        TextToSpeech? = null
+
+    private lateinit var router:
+        PoxiCommandRouter
+
+    private lateinit var wakeWordEngine:
+        PoxiWakeWordEngine
 
     private var isListening = false
+    private var isSpeaking = false
+    private var serviceRunning = false
+    private var wakeWordMode = false
 
     override fun onCreate() {
         super.onCreate()
 
+        serviceRunning = true
+
         createNotificationChannel()
+
         startForeground(
             NOTIFICATION_ID,
-            buildNotification("Starting voice engine...")
+            buildNotification("POXI starting...")
         )
 
         router = PoxiCommandRouter(this)
 
-        textToSpeech = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                textToSpeech?.language = Locale.getDefault()
+        wakeWordEngine =
+            PoxiWakeWordEngine(this)
+
+        setupTextToSpeech()
+
+        initializeWakeWordEngine()
+    }
+
+    private fun initializeWakeWordEngine() {
+
+        wakeWordMode =
+            wakeWordEngine.initialize()
+
+        if (wakeWordMode) {
+
+            updateNotification(
+                "Hey Poxi ready"
+            )
+
+            startWakeWordDetection()
+
+        } else {
+
+            updateNotification(
+                "Wake word model not installed"
+            )
+
+            setupSpeechRecognizer()
+
+            mainHandler.post {
+                startListeningSafely()
             }
         }
+    }
 
-        setupSpeechRecognizer()
+    private fun startWakeWordDetection() {
+
+        if (!serviceRunning) return
+        if (!wakeWordEngine.isReady()) return
+
+        updateNotification(
+            "Waiting for Hey Poxi..."
+        )
+
+        val started =
+            wakeWordEngine.start { score ->
+
+                mainHandler.post {
+
+                    if (
+                        serviceRunning &&
+                        !isSpeaking &&
+                        !isListening
+                    ) {
+                        onWakeWordDetected(score)
+                    }
+                }
+            }
+
+        if (!started) {
+
+            wakeWordMode = false
+
+            updateNotification(
+                "Wake word start failed"
+            )
+
+            setupSpeechRecognizer()
+
+            scheduleListening()
+        }
+    }
+
+    private fun onWakeWordDetected(
+        score: Float
+    ) {
+
+        if (!serviceRunning) return
+        if (isSpeaking) return
+        if (isListening) return
+
+        updateNotification(
+            "Hey Poxi detected"
+        )
+
+        wakeWordEngine.stop()
+
+        speakAndListen()
+    }
+
+    private fun speakAndListen() {
+
+        isSpeaking = true
+
+        textToSpeech?.speak(
+            "Yes, I'm listening.",
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "POXI_WAKE"
+        )
+
+        mainHandler.removeCallbacks(
+            commandListeningRunnable
+        )
+
+        mainHandler.postDelayed(
+            commandListeningRunnable,
+            900L
+        )
+    }
+
+    private val commandListeningRunnable =
+        Runnable {
+
+            isSpeaking = false
+
+            setupSpeechRecognizer()
+
+            startListeningSafely()
+        }
+
+    private fun setupTextToSpeech() {
+
+        textToSpeech =
+            TextToSpeech(this) { status ->
+
+                if (
+                    status ==
+                    TextToSpeech.SUCCESS
+                ) {
+
+                    val result =
+                        textToSpeech?.setLanguage(
+                            Locale.getDefault()
+                        )
+
+                    if (
+                        result ==
+                        TextToSpeech.LANG_MISSING_DATA ||
+                        result ==
+                        TextToSpeech.LANG_NOT_SUPPORTED
+                    ) {
+
+                        textToSpeech?.language =
+                            Locale.US
+                    }
+                }
+            }
     }
 
     private fun createNotificationChannel() {
-        val manager = getSystemService(NotificationManager::class.java)
 
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "POXI Voice",
-            NotificationManager.IMPORTANCE_LOW
-        )
+        val manager =
+            getSystemService(
+                NotificationManager::class.java
+            )
+
+        val channel =
+            NotificationChannel(
+                CHANNEL_ID,
+                "POXI Voice",
+                NotificationManager.IMPORTANCE_LOW
+            )
 
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(status: String): Notification {
-        return Notification.Builder(this, CHANNEL_ID)
+    private fun buildNotification(
+        status: String
+    ): Notification {
+
+        return Notification.Builder(
+            this,
+            CHANNEL_ID
+        )
             .setContentTitle("POXI Voice")
             .setContentText(status)
-            .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+            .setSmallIcon(
+                android.R.drawable.ic_btn_speak_now
+            )
             .setOngoing(true)
             .build()
     }
 
-    private fun updateNotification(status: String) {
-        val manager = getSystemService(NotificationManager::class.java)
+    private fun updateNotification(
+        status: String
+    ) {
+
+        val manager =
+            getSystemService(
+                NotificationManager::class.java
+            )
 
         manager.notify(
             NOTIFICATION_ID,
@@ -87,8 +264,19 @@ class PoxiAlwaysOnVoiceService : Service() {
         startId: Int
     ): Int {
 
-        mainHandler.post {
-            startListening()
+        serviceRunning = true
+
+        if (wakeWordMode) {
+
+            mainHandler.post {
+                startWakeWordDetection()
+            }
+
+        } else {
+
+            mainHandler.post {
+                startListeningSafely()
+            }
         }
 
         return START_STICKY
@@ -96,165 +284,273 @@ class PoxiAlwaysOnVoiceService : Service() {
 
     private fun setupSpeechRecognizer() {
 
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            updateNotification("Speech recognition unavailable")
+        if (
+            !SpeechRecognizer
+                .isRecognitionAvailable(this)
+        ) {
+
+            updateNotification(
+                "Speech recognition unavailable"
+            )
+
             return
         }
 
+        speechRecognizer?.cancel()
         speechRecognizer?.destroy()
 
         speechRecognizer =
-            SpeechRecognizer.createSpeechRecognizer(this)
+            SpeechRecognizer
+                .createSpeechRecognizer(this)
 
         speechRecognizer?.setRecognitionListener(
             object : RecognitionListener {
 
-                override fun onReadyForSpeech(params: Bundle?) {
+                override fun onReadyForSpeech(
+                    params: Bundle?
+                ) {
+
                     isListening = true
-                    updateNotification("Listening...")
+
+                    updateNotification(
+                        if (wakeWordMode)
+                            "Command listening..."
+                        else
+                            "Listening..."
+                    )
                 }
 
                 override fun onBeginningOfSpeech() {
-                    updateNotification("Hearing command...")
+
+                    updateNotification(
+                        "Hearing command..."
+                    )
                 }
 
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(
+                    rmsdB: Float
+                ) {
+                }
 
-                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onBufferReceived(
+                    buffer: ByteArray?
+                ) {
+                }
 
                 override fun onEndOfSpeech() {
+
                     isListening = false
-                    updateNotification("Processing...")
+
+                    updateNotification(
+                        "Processing..."
+                    )
                 }
 
-                override fun onError(error: Int) {
-                    isListening = false
-                    updateNotification("Listening again...")
+                override fun onError(
+                    error: Int
+                ) {
 
-                    scheduleListening()
+                    isListening = false
+
+                    if (!serviceRunning) {
+                        return
+                    }
+
+                    if (wakeWordMode) {
+
+                        updateNotification(
+                            "Waiting for Hey Poxi..."
+                        )
+
+                        startWakeWordDetection()
+
+                    } else {
+
+                        updateNotification(
+                            "Listening again..."
+                        )
+
+                        scheduleListening()
+                    }
                 }
 
-                override fun onResults(results: Bundle?) {
+                override fun onResults(
+                    results: Bundle?
+                ) {
 
                     isListening = false
 
                     val matches =
                         results?.getStringArrayList(
-                            SpeechRecognizer.RESULTS_RECOGNITION
+                            SpeechRecognizer
+                                .RESULTS_RECOGNITION
                         )
 
                     val command =
-                        matches?.firstOrNull()?.trim().orEmpty()
+                        matches
+                            ?.firstOrNull()
+                            ?.trim()
+                            .orEmpty()
 
-                    if (command.isNotEmpty()) {
-                        processCommand(command)
+                    if (
+                        command.isNotEmpty()
+                    ) {
+
+                        processCommand(
+                            command
+                        )
+
                     } else {
-                        scheduleListening()
+
+                        returnToWakeWord()
                     }
                 }
 
                 override fun onPartialResults(
                     partialResults: Bundle?
-                ) {}
+                ) {
+                }
 
                 override fun onEvent(
                     eventType: Int,
                     params: Bundle?
-                ) {}
+                ) {
+                }
             }
         )
     }
 
+    private fun startListeningSafely() {
+
+        if (!serviceRunning) return
+        if (isSpeaking) return
+        if (isListening) return
+
+        val recognizer =
+            speechRecognizer ?: run {
+
+                setupSpeechRecognizer()
+
+                speechRecognizer
+                    ?: return
+            }
+
+        val intent =
+            Intent(
+                RecognizerIntent
+                    .ACTION_RECOGNIZE_SPEECH
+            ).apply {
+
+                putExtra(
+                    RecognizerIntent
+                        .EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent
+                        .LANGUAGE_MODEL_FREE_FORM
+                )
+
+                putExtra(
+                    RecognizerIntent
+                        .EXTRA_LANGUAGE,
+                    Locale.getDefault()
+                )
+
+                putExtra(
+                    RecognizerIntent
+                        .EXTRA_PARTIAL_RESULTS,
+                    false
+                )
+
+                putExtra(
+                    RecognizerIntent
+                        .EXTRA_MAX_RESULTS,
+                    1
+                )
+            }
+
+        try {
+
+            updateNotification(
+                "Listening for command..."
+            )
+
+            recognizer.startListening(
+                intent
+            )
+
+        } catch (_: Exception) {
+
+            isListening = false
+
+            scheduleListening()
+        }
+    }
+
     private fun scheduleListening() {
 
-        mainHandler.removeCallbacksAndMessages(null)
+        if (!serviceRunning) return
+
+        mainHandler.removeCallbacks(
+            listenRunnable
+        )
 
         mainHandler.postDelayed(
-            {
-                startListening()
-            },
-            700
+            listenRunnable,
+            LISTEN_DELAY
         )
     }
 
-    private fun startListening() {
-
-        if (isListening) {
-            return
+    private val listenRunnable =
+        Runnable {
+            startListeningSafely()
         }
 
-        val recognizer = speechRecognizer ?: run {
-            setupSpeechRecognizer()
-            speechRecognizer ?: return
-        }
+    private fun processCommand(
+        command: String
+    ) {
 
-        val intent = Intent(
-            RecognizerIntent.ACTION_RECOGNIZE_SPEECH
-        ).apply {
+        if (!serviceRunning) return
 
-            putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
-            )
+        updateNotification(
+            "Processing: $command"
+        )
 
-            putExtra(
-                RecognizerIntent.EXTRA_LANGUAGE,
-                Locale.getDefault()
-            )
+        val response =
+            try {
 
-            putExtra(
-                RecognizerIntent.EXTRA_PARTIAL_RESULTS,
-                false
-            )
+                router.handle(command)
 
-            putExtra(
-                RecognizerIntent.EXTRA_MAX_RESULTS,
-                1
-            )
-        }
+            } catch (_: Exception) {
 
-        try {
-            updateNotification("Listening...")
-            recognizer.startListening(intent)
-        } catch (_: Exception) {
-            isListening = false
-            updateNotification("Retrying microphone...")
-            scheduleListening()
-        }
-    }
-
-    private fun processCommand(command: String) {
-
-        updateNotification("Processing: $command")
-
-        val normalized =
-            command.lowercase(Locale.getDefault())
-
-        if (
-            normalized == "hey poxi" ||
-            normalized == "okay poxi" ||
-            normalized == "hello poxi"
-        ) {
-            speak("Yes, I'm listening")
-            return
-        }
-
-        val response = try {
-            router.handle(command)
-        } catch (_: Exception) {
-            "Sorry, I couldn't process that command"
-        }
+                "Sorry, I couldn't process that command."
+            }
 
         if (response.isNotBlank()) {
+
             speak(response)
+
         } else {
-            scheduleListening()
+
+            returnToWakeWord()
         }
     }
 
-    private fun speak(text: String) {
+    private fun speak(
+        text: String
+    ) {
 
-        updateNotification("POXI speaking...")
+        if (!serviceRunning) return
+
+        isSpeaking = true
+        isListening = false
+
+        try {
+            speechRecognizer?.cancel()
+        } catch (_: Exception) {
+        }
+
+        updateNotification(
+            "POXI speaking..."
+        )
 
         textToSpeech?.speak(
             text,
@@ -263,28 +559,97 @@ class PoxiAlwaysOnVoiceService : Service() {
             "POXI_RESPONSE"
         )
 
-        mainHandler.postDelayed(
-            {
-                startListening()
-            },
-            1200
+        mainHandler.removeCallbacks(
+            restartAfterSpeechRunnable
         )
+
+        mainHandler.postDelayed(
+            restartAfterSpeechRunnable,
+            TTS_RESTART_DELAY
+        )
+    }
+
+    private val restartAfterSpeechRunnable =
+        Runnable {
+
+            isSpeaking = false
+
+            if (!serviceRunning) return@Runnable
+
+            returnToWakeWord()
+        }
+
+    private fun returnToWakeWord() {
+
+        if (!serviceRunning) return
+
+        isListening = false
+
+        try {
+            speechRecognizer?.cancel()
+        } catch (_: Exception) {
+        }
+
+        if (wakeWordMode) {
+
+            updateNotification(
+                "Waiting for Hey Poxi..."
+            )
+
+            mainHandler.postDelayed(
+                {
+                    startWakeWordDetection()
+                },
+                300L
+            )
+
+        } else {
+
+            updateNotification(
+                "Listening..."
+            )
+
+            scheduleListening()
+        }
     }
 
     override fun onDestroy() {
 
-        mainHandler.removeCallbacksAndMessages(null)
+        serviceRunning = false
+        isListening = false
+        isSpeaking = false
 
-        speechRecognizer?.cancel()
-        speechRecognizer?.destroy()
+        mainHandler.removeCallbacksAndMessages(
+            null
+        )
+
+        try {
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {
+        }
+
         speechRecognizer = null
 
-        textToSpeech?.stop()
-        textToSpeech?.shutdown()
+        try {
+            wakeWordEngine.release()
+        } catch (_: Exception) {
+        }
+
+        try {
+            textToSpeech?.stop()
+            textToSpeech?.shutdown()
+        } catch (_: Exception) {
+        }
+
         textToSpeech = null
 
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(
+        intent: Intent?
+    ): IBinder? {
+        return null
+    }
 }
