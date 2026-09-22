@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -20,13 +22,36 @@ class PoxiAlwaysOnVoiceService : Service() {
         private const val NOTIFICATION_ID = 1001
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private var speechRecognizer: SpeechRecognizer? = null
     private var textToSpeech: TextToSpeech? = null
+
     private lateinit var router: PoxiCommandRouter
+
+    private var isListening = false
 
     override fun onCreate() {
         super.onCreate()
 
+        createNotificationChannel()
+        startForeground(
+            NOTIFICATION_ID,
+            buildNotification("Starting voice engine...")
+        )
+
+        router = PoxiCommandRouter(this)
+
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeech?.language = Locale.getDefault()
+            }
+        }
+
+        setupSpeechRecognizer()
+    }
+
+    private fun createNotificationChannel() {
         val manager = getSystemService(NotificationManager::class.java)
 
         val channel = NotificationChannel(
@@ -36,25 +61,24 @@ class PoxiAlwaysOnVoiceService : Service() {
         )
 
         manager.createNotificationChannel(channel)
+    }
 
-        val notification = Notification.Builder(this, CHANNEL_ID)
+    private fun buildNotification(status: String): Notification {
+        return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("POXI Voice")
-            .setContentText("POXI is ready for voice commands")
+            .setContentText(status)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setOngoing(true)
             .build()
+    }
 
-        startForeground(NOTIFICATION_ID, notification)
+    private fun updateNotification(status: String) {
+        val manager = getSystemService(NotificationManager::class.java)
 
-        router = PoxiCommandRouter(this)
-
-        textToSpeech = TextToSpeech(this) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                textToSpeech?.language = Locale.US
-            }
-        }
-
-        setupSpeechRecognizer()
+        manager.notify(
+            NOTIFICATION_ID,
+            buildNotification(status)
+        )
     }
 
     override fun onStartCommand(
@@ -63,7 +87,9 @@ class PoxiAlwaysOnVoiceService : Service() {
         startId: Int
     ): Int {
 
-        startListening()
+        mainHandler.post {
+            startListening()
+        }
 
         return START_STICKY
     }
@@ -71,45 +97,59 @@ class PoxiAlwaysOnVoiceService : Service() {
     private fun setupSpeechRecognizer() {
 
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            speak("Speech recognition is not available")
+            updateNotification("Speech recognition unavailable")
             return
         }
 
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer?.destroy()
+
+        speechRecognizer =
+            SpeechRecognizer.createSpeechRecognizer(this)
 
         speechRecognizer?.setRecognitionListener(
             object : RecognitionListener {
 
-                override fun onReadyForSpeech(params: Bundle?) {}
+                override fun onReadyForSpeech(params: Bundle?) {
+                    isListening = true
+                    updateNotification("Listening...")
+                }
 
-                override fun onBeginningOfSpeech() {}
+                override fun onBeginningOfSpeech() {
+                    updateNotification("Hearing command...")
+                }
 
                 override fun onRmsChanged(rmsdB: Float) {}
 
                 override fun onBufferReceived(buffer: ByteArray?) {}
 
-                override fun onEndOfSpeech() {}
+                override fun onEndOfSpeech() {
+                    isListening = false
+                    updateNotification("Processing...")
+                }
 
                 override fun onError(error: Int) {
-                    startListening()
+                    isListening = false
+                    updateNotification("Listening again...")
+
+                    scheduleListening()
                 }
 
                 override fun onResults(results: Bundle?) {
+
+                    isListening = false
 
                     val matches =
                         results?.getStringArrayList(
                             SpeechRecognizer.RESULTS_RECOGNITION
                         )
 
-                    val command = matches
-                        ?.firstOrNull()
-                        ?.trim()
-                        .orEmpty()
+                    val command =
+                        matches?.firstOrNull()?.trim().orEmpty()
 
                     if (command.isNotEmpty()) {
                         processCommand(command)
                     } else {
-                        startListening()
+                        scheduleListening()
                     }
                 }
 
@@ -125,9 +165,28 @@ class PoxiAlwaysOnVoiceService : Service() {
         )
     }
 
+    private fun scheduleListening() {
+
+        mainHandler.removeCallbacksAndMessages(null)
+
+        mainHandler.postDelayed(
+            {
+                startListening()
+            },
+            700
+        )
+    }
+
     private fun startListening() {
 
-        val recognizer = speechRecognizer ?: return
+        if (isListening) {
+            return
+        }
+
+        val recognizer = speechRecognizer ?: run {
+            setupSpeechRecognizer()
+            speechRecognizer ?: return
+        }
 
         val intent = Intent(
             RecognizerIntent.ACTION_RECOGNIZE_SPEECH
@@ -155,14 +214,21 @@ class PoxiAlwaysOnVoiceService : Service() {
         }
 
         try {
+            updateNotification("Listening...")
             recognizer.startListening(intent)
         } catch (_: Exception) {
+            isListening = false
+            updateNotification("Retrying microphone...")
+            scheduleListening()
         }
     }
 
     private fun processCommand(command: String) {
 
-        val normalized = command.lowercase(Locale.getDefault())
+        updateNotification("Processing: $command")
+
+        val normalized =
+            command.lowercase(Locale.getDefault())
 
         if (
             normalized == "hey poxi" ||
@@ -170,24 +236,25 @@ class PoxiAlwaysOnVoiceService : Service() {
             normalized == "hello poxi"
         ) {
             speak("Yes, I'm listening")
-            startListening()
             return
         }
 
         val response = try {
             router.handle(command)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             "Sorry, I couldn't process that command"
         }
 
         if (response.isNotBlank()) {
             speak(response)
+        } else {
+            scheduleListening()
         }
-
-        startListening()
     }
 
     private fun speak(text: String) {
+
+        updateNotification("POXI speaking...")
 
         textToSpeech?.speak(
             text,
@@ -195,10 +262,20 @@ class PoxiAlwaysOnVoiceService : Service() {
             null,
             "POXI_RESPONSE"
         )
+
+        mainHandler.postDelayed(
+            {
+                startListening()
+            },
+            1200
+        )
     }
 
     override fun onDestroy() {
 
+        mainHandler.removeCallbacksAndMessages(null)
+
+        speechRecognizer?.cancel()
         speechRecognizer?.destroy()
         speechRecognizer = null
 
