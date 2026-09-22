@@ -1,5 +1,3 @@
-cd ~/storage/downloads/POXI
-cat > app/src/main/java/com/poxi/mobile/PoxiCommandRouter.kt
 package com.poxi.mobile
 
 import android.content.Context
