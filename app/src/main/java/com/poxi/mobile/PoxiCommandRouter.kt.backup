@@ -1,7 +1,6 @@
-cd ~/storage/downloads/POXI
-cat > app/src/main/java/com/poxi/mobile/PoxiCommandRouter.kt
 package com.poxi.mobile
 
+import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraCharacteristics
@@ -20,121 +19,126 @@ class PoxiCommandRouter(private val context: Context) {
     private val memory = PoxiMemory(context)
 
     fun handle(command: String): String {
-        val original = command.trim()
-        val c = original.lowercase(Locale.getDefault())
+        val c = command.trim().lowercase(Locale.getDefault())
 
         return when {
 
-            // MEMORY
+            // ---------------- MEMORY ----------------
+
             c.startsWith("remember my name is") -> {
-                val name = original.substringAfter("remember my name is").trim()
+                val name = command
+                    .substringAfter("remember my name is")
+                    .trim()
+
                 if (name.isEmpty()) {
                     "Please tell me your name."
                 } else {
-                    memory.saveName(name)
+                    memory.save("name", name)
                     "Okay, I will remember your name is $name."
                 }
             }
 
             c.contains("what is my name") ||
-            c.contains("what's my name") ||
-            c.contains("mera naam kya hai") ||
-            c.contains("mera naam batao") ||
-            c.contains("naam kya hai") -> {
-                memory.getName()?.let {
-                    "Your name is $it."
-                } ?: "I don't know your name yet."
+            c.contains("mera naam kya hai") -> {
+                val name = memory.get("name")
+
+                if (name != null) {
+                    "Your name is $name."
+                } else {
+                    "I don't know your name yet."
+                }
             }
 
             c.startsWith("remember that") ||
-            c.startsWith("yaad rakho") ||
-            c.startsWith("yaad rakhna") -> {
-
+            c.startsWith("yaad rakho") -> {
                 val value = when {
                     c.startsWith("remember that") ->
-                        original.substringAfter("remember that").trim()
-
-                    c.startsWith("yaad rakho") ->
-                        original.substringAfter("yaad rakho").trim()
+                        command.substringAfter("remember that").trim()
 
                     else ->
-                        original.substringAfter("yaad rakhna").trim()
+                        command.substringAfter("yaad rakho").trim()
                 }
 
                 if (value.isEmpty()) {
                     "What should I remember?"
                 } else {
-                    memory.saveFact(value)
+                    memory.save("note_memory", value)
                     "Okay, I will remember that."
                 }
             }
 
-            c.contains("what do you remember") ||
-            c.contains("kya yaad hai") ||
-            c.contains("maine kya yaad") -> {
-                memory.getFact() ?: "I don't have anything remembered yet."
-            }
+            // ---------------- BATTERY ----------------
 
-            // BATTERY
             c.contains("battery") ||
-            c.contains("बैटरी") ||
-            c.contains("charge kitna") ||
-            c.contains("charge kitni") -> {
+            c.contains("बैटरी") -> {
                 batteryStatus()
             }
 
-            // SEARCH
-            c.startsWith("search") ||
-            c.startsWith("google") ||
-            c.startsWith("internet pe search") ||
-            c.startsWith("internet par search") ||
-            c.startsWith("online search") -> {
+            // ---------------- INTERNET SEARCH ----------------
 
-                val query = extractSearchQuery(original)
+            c.startsWith("search for") -> {
+                val query = command
+                    .substringAfter("search for")
+                    .trim()
 
                 if (query.isEmpty()) {
                     "What should I search for?"
                 } else {
                     webSearch(query)
-                    "Searching for $query."
+                    "Searching the internet for $query."
                 }
             }
 
-            // ALARM
-            c.contains("set alarm") ||
-            c.contains("alarm lagao") ||
-            c.contains("alarm laga do") ||
-            c.contains("alarm lagado") ||
-            c.contains("alarm set") ||
-            (c.contains("alarm") &&
-                (c.contains("baje") ||
-                 c.contains("am") ||
-                 c.contains("pm"))) -> {
-                setAlarmFromCommand(original)
+            c.startsWith("search") -> {
+                val query = command
+                    .substringAfter("search")
+                    .trim()
+
+                if (query.isNotEmpty()) {
+                    webSearch(query)
+                    "Searching for $query."
+                } else {
+                    "What should I search for?"
+                }
             }
 
-            // CAMERA
+            c.startsWith("google") -> {
+                val query = command
+                    .substringAfter("google")
+                    .trim()
+
+                if (query.isNotEmpty()) {
+                    webSearch(query)
+                    "Searching Google."
+                } else {
+                    "What should I search for?"
+                }
+            }
+
+            // ---------------- ALARM ----------------
+
+            c.contains("set alarm") ||
+            c.contains("alarm lagao") ||
+            c.contains("alarm set") -> {
+                setAlarmFromCommand(command)
+            }
+
+            // ---------------- CAMERA ----------------
+
             c.contains("open camera") ||
             c.contains("camera kholo") ||
-            c.contains("camera khol") ||
-            c.contains("camera open") ||
-            c.contains("camera chalu") ||
-            c.contains("camera chalao") ||
-            c.contains("camera on karo") -> {
-
+            c.contains("camera open") -> {
                 openCamera()
                 "Opening camera."
             }
 
-            // FLASHLIGHT
+            // ---------------- FLASHLIGHT ----------------
+
             c.contains("flashlight on") ||
             c.contains("torch on") ||
             c.contains("torch chalu") ||
-            c.contains("torch jalao") ||
-            c.contains("torch jala do") ||
             c.contains("torch on karo") ||
             c.contains("flashlight chalu") -> {
-
                 if (setFlashlight(true)) {
                     "Flashlight on."
                 } else {
@@ -145,11 +149,8 @@ class PoxiCommandRouter(private val context: Context) {
             c.contains("flashlight off") ||
             c.contains("torch off") ||
             c.contains("torch band") ||
-            c.contains("torch band karo") ||
-            c.contains("torch bujhao") ||
-            c.contains("torch bujha do") ||
+            c.contains("torch off karo") ||
             c.contains("flashlight band") -> {
-
                 if (setFlashlight(false)) {
                     "Flashlight off."
                 } else {
@@ -157,108 +158,76 @@ class PoxiCommandRouter(private val context: Context) {
                 }
             }
 
-            // WIFI
+            // ---------------- SETTINGS ----------------
+
             c.contains("wifi settings") ||
             c.contains("wifi kholo") ||
-            c.contains("wifi khol") ||
             c.contains("wifi open") ||
             c.contains("wifi settings kholo") -> {
-
                 openSettings(Settings.ACTION_WIFI_SETTINGS)
                 "Opening Wi-Fi settings."
             }
 
-            // BLUETOOTH
             c.contains("bluetooth settings") ||
             c.contains("bluetooth kholo") ||
-            c.contains("bluetooth khol") ||
             c.contains("bluetooth open") -> {
-
                 openSettings(Settings.ACTION_BLUETOOTH_SETTINGS)
                 "Opening Bluetooth settings."
             }
 
-            // PHONE SETTINGS
             c.contains("phone settings") ||
             c.contains("settings kholo") ||
-            c.contains("settings khol") ||
             c == "settings" -> {
-
                 openSettings(Settings.ACTION_SETTINGS)
                 "Opening phone settings."
             }
 
-            // APPS
+            // ---------------- APP LAUNCHER ----------------
+
             c.startsWith("open ") ||
             c.startsWith("launch ") ||
             c.startsWith("khol ") ||
-            c.startsWith("kholna ") ||
-            c.startsWith("khol do ") ||
-            c.contains("youtube kholo") ||
-            c.contains("youtube khol") ||
-            c.contains("whatsapp kholo") ||
-            c.contains("whatsapp khol") ||
-            c.contains("instagram kholo") ||
-            c.contains("instagram khol") ||
-            c.contains("facebook kholo") ||
-            c.contains("facebook khol") ||
-            c.contains("spotify kholo") ||
-            c.contains("spotify khol") -> {
-
-                openAppByName(original)
+            c.startsWith("kholna ") -> {
+                openAppByName(command)
             }
 
-            // NOTES
+            // ---------------- NOTES ----------------
+
             c.startsWith("save note") ||
             c.startsWith("note likho") ||
-            c.startsWith("note likh") ||
-            c.startsWith("note save karo") ||
-            c.startsWith("save this") ||
-            c.startsWith("isko note karo") -> {
+            c.startsWith("save this") -> {
 
                 val note = when {
                     c.startsWith("save note") ->
-                        original.substringAfter("save note").trim()
+                        command.substringAfter("save note").trim()
 
                     c.startsWith("note likho") ->
-                        original.substringAfter("note likho").trim()
-
-                    c.startsWith("note likh") ->
-                        original.substringAfter("note likh").trim()
-
-                    c.startsWith("note save karo") ->
-                        original.substringAfter("note save karo").trim()
-
-                    c.startsWith("save this") ->
-                        original.substringAfter("save this").trim()
+                        command.substringAfter("note likho").trim()
 
                     else ->
-                        original.substringAfter("isko note karo").trim()
+                        command.substringAfter("save this").trim()
                 }
 
                 if (note.isEmpty()) {
                     "What note should I save?"
                 } else {
-                    memory.saveLastNote(note)
+                    memory.save("last_note", note)
                     "Note saved."
                 }
             }
 
             c.contains("last note") ||
             c.contains("meri note") ||
-            c.contains("my note") ||
-            c.contains("meri last note") ||
-            c.contains("note kya hai") -> {
-                memory.getLastNote() ?: "I don't have a saved note."
+            c.contains("my note") -> {
+                memory.get("last_note")
+                    ?: "I don't have a saved note."
             }
 
-            // TIME
+            // ---------------- TIME / DATE ----------------
+
             c.contains("what time") ||
             c.contains("time kya") ||
-            c.contains("time batao") ||
-            c.contains("kitne baje") ||
             c == "time" -> {
-
                 val now = Calendar.getInstance()
 
                 String.format(
@@ -269,14 +238,10 @@ class PoxiCommandRouter(private val context: Context) {
                 )
             }
 
-            // DATE
             c.contains("today's date") ||
             c.contains("what date") ||
             c.contains("date kya") ||
-            c.contains("date batao") ||
-            c.contains("aaj ki date") ||
             c == "date" -> {
-
                 val now = Calendar.getInstance()
 
                 String.format(
@@ -288,101 +253,76 @@ class PoxiCommandRouter(private val context: Context) {
                 )
             }
 
-            // WEATHER
-            c.contains("weather") ||
-            c.contains("mausam") ||
-            c.contains("aaj ka mausam") -> {
+            // ---------------- WEATHER ----------------
 
+            c.contains("weather") ||
+            c.contains("mausam") -> {
                 webSearch("weather today")
                 "Opening today's weather information."
             }
 
-            // MEDIA
+            // ---------------- MEDIA ----------------
+
             c.contains("pause music") ||
             c.contains("music pause") ||
-            c.contains("pause media") ||
-            c.contains("music roko") ||
-            c.contains("music band") -> {
-
+            c.contains("pause media") -> {
                 mediaKey(KeyEvent.KEYCODE_MEDIA_PAUSE)
                 "Pausing media."
             }
 
             c.contains("play music") ||
             c.contains("music play") ||
-            c.contains("play media") ||
-            c.contains("music chalao") ||
-            c.contains("music chalu karo") ||
-            c.contains("gaana chalao") ||
-            c.contains("song chalao") -> {
-
+            c.contains("play media") -> {
                 mediaKey(KeyEvent.KEYCODE_MEDIA_PLAY)
                 "Playing media."
             }
 
             c.contains("next song") ||
             c.contains("next track") ||
-            c.contains("agla gana") ||
-            c.contains("agla song") ||
             c == "next" -> {
-
                 mediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
                 "Next track."
             }
 
             c.contains("previous song") ||
             c.contains("previous track") ||
-            c.contains("pichla gana") ||
-            c.contains("pichla song") ||
             c == "previous" -> {
-
                 mediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
                 "Previous track."
             }
 
-            // VOLUME
             c.contains("volume up") ||
-            c.contains("volume badhao") ||
-            c.contains("volume badao") ||
-            c.contains("awaz badhao") ||
-            c.contains("awaaz badhao") -> {
-
+            c.contains("volume badhao") -> {
                 adjustVolume(AudioManager.ADJUST_RAISE)
                 "Volume increased."
             }
 
             c.contains("volume down") ||
-            c.contains("volume kam") ||
-            c.contains("awaz kam") ||
-            c.contains("awaaz kam") -> {
-
+            c.contains("volume kam") -> {
                 adjustVolume(AudioManager.ADJUST_LOWER)
                 "Volume decreased."
             }
 
             c.contains("mute phone") ||
-            c.contains("phone mute") ||
-            c.contains("phone silent") -> {
-
+            c.contains("phone mute") -> {
                 adjustVolume(AudioManager.ADJUST_MUTE)
                 "Phone muted."
             }
 
-            // PERMISSIONS
+            // ---------------- PRIVACY / PERMISSIONS ----------------
+
             c.contains("privacy") ||
             c.contains("permissions") ||
             c.contains("permission status") -> {
-
                 openAppSettings()
                 "Opening POXI app permissions."
             }
 
-            // HELP
+            // ---------------- HELP ----------------
+
             c == "help" ||
             c.contains("what can you do") ||
-            c.contains("tum kya kar sakte ho") ||
-            c.contains("kya kya kar sakte ho") -> {
-
+            c.contains("tum kya kar sakte ho") -> {
                 "I can open apps, search the internet, check battery, open camera, control flashlight, set alarms, save notes, tell time and date, open Wi-Fi and Bluetooth settings, and control media."
             }
 
@@ -392,17 +332,18 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
+    // --------------------------------------------------
+    // BATTERY
+    // --------------------------------------------------
+
     private fun batteryStatus(): String {
-
         val manager =
-            context.getSystemService(
-                Context.BATTERY_SERVICE
-            ) as BatteryManager
+            context.getSystemService(Context.BATTERY_SERVICE)
+                    as BatteryManager
 
-        val level =
-            manager.getIntProperty(
-                BatteryManager.BATTERY_PROPERTY_CAPACITY
-            )
+        val level = manager.getIntProperty(
+            BatteryManager.BATTERY_PROPERTY_CAPACITY
+        )
 
         return if (level >= 0) {
             "Battery is at $level percent."
@@ -411,45 +352,20 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun extractSearchQuery(command: String): String {
-
-        val lower =
-            command.lowercase(Locale.getDefault())
-
-        val prefixes = listOf(
-            "internet pe search karo",
-            "internet pe search",
-            "internet par search karo",
-            "internet par search",
-            "online search",
-            "search karo",
-            "search kar",
-            "google",
-            "search"
-        )
-
-        for (prefix in prefixes) {
-            if (lower.startsWith(prefix)) {
-                return command.substring(prefix.length).trim()
-            }
-        }
-
-        return command.trim()
-    }
+    // --------------------------------------------------
+    // WEB SEARCH
+    // --------------------------------------------------
 
     private fun webSearch(query: String) {
-
         val url =
-            "https://www.google.com/search?q=" +
-                Uri.encode(query)
+            "https://www.google.com/search?q=" + Uri.encode(query)
 
-        val intent =
-            Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse(url)
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse(url)
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
 
         try {
             context.startActivity(intent)
@@ -457,33 +373,30 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun setAlarmFromCommand(
-        command: String
-    ): String {
+    // --------------------------------------------------
+    // ALARM
+    // --------------------------------------------------
+
+    private fun setAlarmFromCommand(command: String): String {
 
         val regex =
-            Regex(
-                """(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""",
-                RegexOption.IGNORE_CASE
-            )
+            Regex("""(\d{1,2})(?::(\d{2}))?\s*(am|pm)?""")
 
-        val match = regex.find(command)
+        val match =
+            regex.find(command.lowercase(Locale.getDefault()))
 
         if (match == null) {
             return "Please say the alarm time, for example, set alarm at 7 AM."
         }
 
-        var hour =
-            match.groupValues[1].toInt()
+        var hour = match.groupValues[1].toInt()
 
         val minute =
             match.groupValues[2]
                 .ifEmpty { "0" }
                 .toInt()
 
-        val ampm =
-            match.groupValues[3]
-                .lowercase(Locale.getDefault())
+        val ampm = match.groupValues[3]
 
         if (ampm == "pm" && hour < 12) {
             hour += 12
@@ -497,26 +410,17 @@ class PoxiCommandRouter(private val context: Context) {
             return "That doesn't look like a valid alarm time."
         }
 
-        val intent =
-            Intent(AlarmClock.ACTION_SET_ALARM).apply {
-
-                putExtra(
-                    AlarmClock.EXTRA_HOUR,
-                    hour
-                )
-
-                putExtra(
-                    AlarmClock.EXTRA_MINUTES,
-                    minute
-                )
-
-                putExtra(
-                    AlarmClock.EXTRA_MESSAGE,
-                    "POXI Alarm"
-                )
-
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+        val intent = Intent(
+            AlarmClock.ACTION_SET_ALARM
+        ).apply {
+            putExtra(AlarmClock.EXTRA_HOUR, hour)
+            putExtra(AlarmClock.EXTRA_MINUTES, minute)
+            putExtra(
+                AlarmClock.EXTRA_MESSAGE,
+                "POXI Alarm"
+            )
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
 
         return try {
             context.startActivity(intent)
@@ -526,12 +430,16 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun openCamera() {
+    // --------------------------------------------------
+    // CAMERA
+    // --------------------------------------------------
 
-        val intent =
-            Intent("android.media.action.IMAGE_CAPTURE").apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+    private fun openCamera() {
+        val intent = Intent(
+            "android.media.action.IMAGE_CAPTURE"
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
 
         try {
             context.startActivity(intent)
@@ -539,9 +447,11 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun setFlashlight(
-        enabled: Boolean
-    ): Boolean {
+    // --------------------------------------------------
+    // FLASHLIGHT
+    // --------------------------------------------------
+
+    private fun setFlashlight(enabled: Boolean): Boolean {
 
         val cameraManager =
             context.getSystemService(
@@ -549,7 +459,6 @@ class PoxiCommandRouter(private val context: Context) {
             ) as CameraManager
 
         return try {
-
             val cameraId =
                 cameraManager.cameraIdList.firstOrNull { id ->
 
@@ -576,12 +485,14 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun openSettings(action: String) {
+    // --------------------------------------------------
+    // SETTINGS
+    // --------------------------------------------------
 
-        val intent =
-            Intent(action).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+    private fun openSettings(action: String) {
+        val intent = Intent(action).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
 
         try {
             context.startActivity(intent)
@@ -590,14 +501,12 @@ class PoxiCommandRouter(private val context: Context) {
     }
 
     private fun openAppSettings() {
-
-        val intent =
-            Intent(
-                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                Uri.parse("package:${context.packageName}")
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:${context.packageName}")
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
 
         try {
             context.startActivity(intent)
@@ -605,29 +514,18 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun openAppByName(
-        command: String
-    ): String {
+    // --------------------------------------------------
+    // APP LAUNCHER
+    // --------------------------------------------------
 
-        var name =
-            command
-                .replace(
-                    Regex(
-                        "^(open|launch|khol|kholna|khol do)\\s+",
-                        RegexOption.IGNORE_CASE
-                    ),
-                    ""
-                )
-                .trim()
+    private fun openAppByName(command: String): String {
 
-        name =
-            name.replace(
-                Regex(
-                    "\\s+(khol|kholo|open|chalu karo|chalao|khol do)$",
-                    RegexOption.IGNORE_CASE
-                ),
+        val name = command
+            .replace(
+                Regex("^(open|launch|khol|kholna)\\s+"),
                 ""
-            ).trim()
+            )
+            .trim()
 
         if (name.isEmpty()) {
             return "Which app should I open?"
@@ -635,32 +533,26 @@ class PoxiCommandRouter(private val context: Context) {
 
         val pm = context.packageManager
 
-        val launcherIntent =
-            Intent(
-                Intent.ACTION_MAIN,
-                null
-            ).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
+        val intent = Intent(
+            Intent.ACTION_MAIN,
+            null
+        ).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
 
-        val apps =
-            pm.queryIntentActivities(
-                launcherIntent,
-                0
-            )
+        val apps = pm.queryIntentActivities(
+            intent,
+            0
+        )
 
-        val app =
-            apps.firstOrNull { info ->
+        val app = apps.firstOrNull { info ->
+            val label =
+                info.loadLabel(pm)
+                    .toString()
+                    .lowercase(Locale.getDefault())
 
-                val label =
-                    info.loadLabel(pm)
-                        .toString()
-                        .lowercase(Locale.getDefault())
-
-                label.contains(
-                    name.lowercase(Locale.getDefault())
-                )
-            }
+            label.contains(name.lowercase(Locale.getDefault()))
+        }
 
         if (app == null) {
             return "I couldn't find $name."
@@ -680,37 +572,33 @@ class PoxiCommandRouter(private val context: Context) {
         )
 
         return try {
-
             context.startActivity(launchIntent)
-
             "Opening ${app.loadLabel(pm)}."
-
         } catch (_: Exception) {
-
             "I couldn't open $name."
         }
     }
 
-    private fun mediaKey(
-        keyCode: Int
-    ) {
+    // --------------------------------------------------
+    // MEDIA
+    // --------------------------------------------------
+
+    private fun mediaKey(keyCode: Int) {
 
         val audioManager =
             context.getSystemService(
                 Context.AUDIO_SERVICE
             ) as AudioManager
 
-        val down =
-            KeyEvent(
-                KeyEvent.ACTION_DOWN,
-                keyCode
-            )
+        val down = KeyEvent(
+            KeyEvent.ACTION_DOWN,
+            keyCode
+        )
 
-        val up =
-            KeyEvent(
-                KeyEvent.ACTION_UP,
-                keyCode
-            )
+        val up = KeyEvent(
+            KeyEvent.ACTION_UP,
+            keyCode
+        )
 
         try {
             audioManager.dispatchMediaKeyEvent(down)
@@ -719,9 +607,7 @@ class PoxiCommandRouter(private val context: Context) {
         }
     }
 
-    private fun adjustVolume(
-        direction: Int
-    ) {
+    private fun adjustVolume(direction: Int) {
 
         val audioManager =
             context.getSystemService(

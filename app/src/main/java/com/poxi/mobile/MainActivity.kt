@@ -31,31 +31,19 @@ class MainActivity : ComponentActivity() {
                 hasPermission(Manifest.permission.POST_NOTIFICATIONS)
 
             if (microphoneGranted && notificationGranted) {
-                updateStatus(
-                    "Permissions ready.\nStarting POXI voice engine..."
-                )
                 startVoiceService()
             } else {
-                updateStatus(
-                    buildPermissionStatus()
-                )
+                updateStatus(buildPermissionStatus())
             }
         }
 
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         buildUi()
         updateStatus(buildPermissionStatus())
-
         requestPermissionsIfNeeded()
     }
-
-    // --------------------------------------------------
-    // UI
-    // --------------------------------------------------
 
     private fun buildUi() {
 
@@ -64,129 +52,111 @@ class MainActivity : ComponentActivity() {
             setPadding(30, 40, 30, 30)
         }
 
-        val startButton =
-            Button(this).apply {
-                text = "🎙️ Start POXI"
-                setOnClickListener {
-                    requestPermissionsIfNeeded()
+        val startButton = Button(this).apply {
+            text = "▶️ Start POXI"
+            setOnClickListener {
+                requestPermissionsIfNeeded()
+            }
+        }
+
+        val listenButton = Button(this).apply {
+            text = "🎤 Talk to POXI"
+            setOnClickListener {
+                requestPermissionsIfNeeded()
+
+                if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
+                    sendCommand(PoxiAlwaysOnVoiceService.ACTION_LISTEN)
                 }
             }
+        }
 
-        val stopButton =
-            Button(this).apply {
-                text = "🛑 Stop POXI"
-                setOnClickListener {
-                    stopVoiceService()
-                }
+        val stopButton = Button(this).apply {
+            text = "🛑 Stop POXI"
+            setOnClickListener {
+                stopVoiceService()
             }
+        }
 
-        val refreshButton =
-            Button(this).apply {
-                text = "🔄 Refresh Status"
-                setOnClickListener {
-                    updateStatus(
-                        buildPermissionStatus()
-                    )
-                }
+        val refreshButton = Button(this).apply {
+            text = "🔄 Refresh Status"
+            setOnClickListener {
+                updateStatus(buildPermissionStatus())
             }
+        }
 
-        val layout =
-            LinearLayout(this).apply {
+        val layout = LinearLayout(this).apply {
 
-                orientation =
-                    LinearLayout.VERTICAL
+            orientation = LinearLayout.VERTICAL
 
-                setPadding(
-                    30,
-                    40,
-                    30,
-                    30
+            setPadding(
+                30,
+                40,
+                30,
+                30
+            )
+
+            addView(statusText)
+
+            addView(
+                startButton,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
+            )
 
-                addView(statusText)
-
-                addView(
-                    startButton,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
+            addView(
+                listenButton,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
+            )
 
-                addView(
-                    stopButton,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
+            addView(
+                stopButton,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
+            )
 
-                addView(
-                    refreshButton,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
+            addView(
+                refreshButton,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-            }
+            )
+        }
 
         setContentView(layout)
     }
 
-    // --------------------------------------------------
-    // PERMISSIONS
-    // --------------------------------------------------
-
     private fun requestPermissionsIfNeeded() {
 
-        val permissions =
-            mutableListOf<String>()
+        val permissions = mutableListOf<String>()
 
-        if (
-            !hasPermission(
-                Manifest.permission.RECORD_AUDIO
-            )
-        ) {
-            permissions.add(
-                Manifest.permission.RECORD_AUDIO
-            )
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            permissions.add(Manifest.permission.RECORD_AUDIO)
         }
 
-        if (
-            Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.TIRAMISU
-        ) {
-            if (
-                !hasPermission(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
-            ) {
-                permissions.add(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) {
+                permissions.add(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
 
         if (permissions.isEmpty()) {
-
-            updateStatus(
-                "Permissions ready.\nStarting POXI..."
-            )
-
             startVoiceService()
-
         } else {
-
             permissionLauncher.launch(
                 permissions.toTypedArray()
             )
         }
     }
 
-    private fun hasPermission(
-        permission: String
-    ): Boolean {
-
+    private fun hasPermission(permission: String): Boolean {
         return ContextCompat.checkSelfPermission(
             this,
             permission
@@ -196,11 +166,7 @@ class MainActivity : ComponentActivity() {
     private fun buildPermissionStatus(): String {
 
         val microphone =
-            if (
-                hasPermission(
-                    Manifest.permission.RECORD_AUDIO
-                )
-            ) {
+            if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
                 "✅ Microphone"
             } else {
                 "❌ Microphone"
@@ -208,14 +174,8 @@ class MainActivity : ComponentActivity() {
 
         val notification =
             if (
-                Build.VERSION.SDK_INT <
-                Build.VERSION_CODES.TIRAMISU
-            ) {
-                "✅ Notifications"
-            } else if (
-                hasPermission(
-                    Manifest.permission.POST_NOTIFICATIONS
-                )
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                hasPermission(Manifest.permission.POST_NOTIFICATIONS)
             ) {
                 "✅ Notifications"
             } else {
@@ -224,25 +184,20 @@ class MainActivity : ComponentActivity() {
 
         return """
             POXI
-            
+
             $microphone
             $notification
-            
-            Voice engine: Ready
+
+            🎤 Press "Talk to POXI"
         """.trimIndent()
     }
 
-    // --------------------------------------------------
-    // VOICE SERVICE
-    // --------------------------------------------------
-
     private fun startVoiceService() {
 
-        val intent =
-            Intent(
-                this,
-                PoxiAlwaysOnVoiceService::class.java
-            )
+        val intent = Intent(
+            this,
+            PoxiAlwaysOnVoiceService::class.java
+        )
 
         try {
 
@@ -252,31 +207,55 @@ class MainActivity : ComponentActivity() {
             )
 
             updateStatus(
-                "🎙️ POXI Voice Engine\nRunning..."
+                "🟢 POXI Ready\n\nPress 🎤 Talk to POXI"
             )
 
         } catch (_: Exception) {
 
             updateStatus(
-                "Unable to start POXI voice service."
+                "Unable to start POXI."
+            )
+        }
+    }
+
+    private fun sendCommand(action: String) {
+
+        val intent = Intent(
+            this,
+            PoxiAlwaysOnVoiceService::class.java
+        ).apply {
+            this.action = action
+        }
+
+        try {
+
+            startService(intent)
+
+            updateStatus(
+                "🎤 POXI is listening..."
+            )
+
+        } catch (_: Exception) {
+
+            updateStatus(
+                "Unable to start voice listening."
             )
         }
     }
 
     private fun stopVoiceService() {
 
-        val intent =
-            Intent(
-                this,
-                PoxiAlwaysOnVoiceService::class.java
-            )
+        val intent = Intent(
+            this,
+            PoxiAlwaysOnVoiceService::class.java
+        )
 
         try {
 
             stopService(intent)
 
             updateStatus(
-                "🛑 POXI Voice Engine\nStopped."
+                "🛑 POXI stopped."
             )
 
         } catch (_: Exception) {
@@ -287,13 +266,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --------------------------------------------------
-    // STATUS
-    // --------------------------------------------------
+    private fun updateStatus(status: String) {
 
-    private fun updateStatus(
-        status: String
-    ) {
         if (::statusText.isInitialized) {
             statusText.text = status
         }
