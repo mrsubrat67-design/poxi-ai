@@ -7,14 +7,27 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.TextView
 import androidx.activity.ComponentActivity
-import androidx.core.app.ActivityCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
 
-    companion object {
-        private const val REQUEST_PERMISSIONS = 100
-    }
+    private val permissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { result ->
+
+            val microphoneGranted =
+                result[Manifest.permission.RECORD_AUDIO] == true ||
+                    ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+
+            if (microphoneGranted) {
+                startVoiceService()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,47 +61,24 @@ class MainActivity : ComponentActivity() {
         }
 
         val missing = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) !=
-                PackageManager.PERMISSION_GRANTED
-        }
-
-        if (missing.isNotEmpty()) {
-            ActivityCompat.requestPermissions(
+            ContextCompat.checkSelfPermission(
                 this,
-                missing.toTypedArray(),
-                REQUEST_PERMISSIONS
-            )
-        } else {
-            startVoiceService()
+                it
+            ) != PackageManager.PERMISSION_GRANTED
         }
-    }
 
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(
-            requestCode,
-            permissions,
-            grantResults
-        )
-
-        if (requestCode == REQUEST_PERMISSIONS) {
-            val microphoneGranted =
-                ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.RECORD_AUDIO
-                ) == PackageManager.PERMISSION_GRANTED
-
-            if (microphoneGranted) {
-                startVoiceService()
-            }
+        if (missing.isEmpty()) {
+            startVoiceService()
+        } else {
+            permissionLauncher.launch(missing.toTypedArray())
         }
     }
 
     private fun startVoiceService() {
-        val intent = Intent(this, PoxiAlwaysOnVoiceService::class.java)
+        val intent = Intent(
+            this,
+            PoxiAlwaysOnVoiceService::class.java
+        )
 
         ContextCompat.startForegroundService(
             this,
