@@ -1,6 +1,5 @@
 package com.poxi.mobile
 
-import android.app.AlarmClockInfo
 import android.app.AlarmManager
 import android.content.Context
 import android.content.Intent

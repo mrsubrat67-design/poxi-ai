@@ -1,71 +1,62 @@
 package com.poxi.mobile
 
 import android.content.Context
+import com.rementia.openwakeword.lib.DetectionMode
+import com.rementia.openwakeword.lib.WakeWordEngine
 import com.rementia.openwakeword.lib.WakeWordModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 
 class PoxiWakeWordEngine(
     private val context: Context
 ) {
-
-    companion object {
-        private const val MODEL_NAME = "hey_poxi.onnx"
-        private const val THRESHOLD = 0.5f
-    }
 
     private val scope =
         CoroutineScope(
             SupervisorJob() + Dispatchers.Default
         )
 
-    private var engine:
-        com.rementia.openwakeword.lib.WakeWordEngine? = null
-
+    private var engine: WakeWordEngine? = null
     private var detectionJob: Job? = null
-
-    private var ready = false
 
     fun initialize(): Boolean {
 
-        if (!assetExists(MODEL_NAME)) {
-            ready = false
-            return false
-        }
-
         return try {
 
-            val model = WakeWordModel(
-                name = "Hey Poxi",
-                modelPath = MODEL_NAME,
-                threshold = THRESHOLD
-            )
-
-            engine =
-                com.rementia.openwakeword.lib.WakeWordEngine(
-                    context = context.applicationContext,
-                    models = listOf(model),
-                    detectionCooldownMs = 2000L
+            val models =
+                listOf(
+                    WakeWordModel(
+                        name = "Hey Poxi",
+                        modelPath = "hey_poxi.onnx",
+                        threshold = 0.1f
+                    )
                 )
 
-            ready = true
+            engine =
+                WakeWordEngine(
+                    context = context.applicationContext,
+                    models = models,
+                    detectionMode = DetectionMode.SINGLE_BEST,
+                    detectionCooldownMs = 2000L,
+                    scope = scope
+                )
+
             true
 
         } catch (_: Exception) {
 
             engine = null
-            ready = false
             false
         }
     }
 
     fun isReady(): Boolean {
-        return ready && engine != null
+        return engine != null
     }
 
     fun start(
@@ -75,8 +66,6 @@ class PoxiWakeWordEngine(
         val wakeEngine =
             engine ?: return false
 
-        if (!ready) return false
-
         return try {
 
             detectionJob?.cancel()
@@ -85,18 +74,13 @@ class PoxiWakeWordEngine(
                 scope.launch {
 
                     launch {
-
-                        wakeEngine.detections.collect { detection ->
-
-                            if (
-                                detection.model.name ==
-                                "Hey Poxi"
-                            ) {
+                        wakeEngine
+                            .detections
+                            .collect { detection ->
                                 onDetected(
                                     detection.score
                                 )
                             }
-                        }
                     }
 
                     wakeEngine.start()
@@ -132,24 +116,7 @@ class PoxiWakeWordEngine(
         detectionJob?.cancel()
         detectionJob = null
         engine = null
-        ready = false
 
         scope.cancel()
-    }
-
-    private fun assetExists(
-        name: String
-    ): Boolean {
-
-        return try {
-
-            context.assets.open(name).use {
-                true
-            }
-
-        } catch (_: Exception) {
-
-            false
-        }
     }
 }
