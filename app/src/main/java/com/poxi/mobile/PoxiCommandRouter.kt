@@ -217,7 +217,7 @@ class PoxiCommandRouter(private val context: Context) {
             c.contains("privacy") ||
             c.contains("permissions") ||
             c.contains("permission status") -> {
-                openSettings(Settings.ACTION_APP_DETAILS_SETTINGS)
+                openSettings(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
                 "Opening POXI app permissions."
             }
 
