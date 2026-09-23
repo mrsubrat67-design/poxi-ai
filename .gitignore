@@ -8,3 +8,5 @@ local.properties
 
 # POXI trained wake-word model
 app/src/main/assets/hey_poxi.onnx
+
+PoxiAlwaysOnVoiceService.backup.kt
