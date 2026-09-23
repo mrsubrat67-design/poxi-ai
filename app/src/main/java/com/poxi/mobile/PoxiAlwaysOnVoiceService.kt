@@ -42,6 +42,7 @@ class PoxiAlwaysOnVoiceService : Service() {
     private var isListening = false
     private var isSpeaking = false
     private var serviceRunning = false
+    private var continuousMode = false
 
     override fun onCreate() {
         super.onCreate()
@@ -74,6 +75,9 @@ class PoxiAlwaysOnVoiceService : Service() {
         serviceRunning = true
 
         if (intent?.action == ACTION_LISTEN) {
+
+            continuousMode = true
+
             mainHandler.post {
                 startListeningSafely()
             }
@@ -153,6 +157,10 @@ class PoxiAlwaysOnVoiceService : Service() {
                         return
                     }
 
+                    if (!continuousMode) {
+                        return
+                    }
+
                     if (isSpeaking) {
                         return
                     }
@@ -178,7 +186,7 @@ class PoxiAlwaysOnVoiceService : Service() {
 
                     if (command.isNotEmpty()) {
                         processCommand(command)
-                    } else {
+                    } else if (continuousMode) {
                         restartListeningAfterDelay()
                     }
                 }
@@ -200,6 +208,7 @@ class PoxiAlwaysOnVoiceService : Service() {
     private fun startListeningSafely() {
 
         if (!serviceRunning) return
+        if (!continuousMode) return
         if (isSpeaking) return
         if (isListening) return
 
@@ -244,8 +253,6 @@ class PoxiAlwaysOnVoiceService : Service() {
 
         try {
 
-            isListening = true
-
             updateNotification(
                 "🎤 Listening..."
             )
@@ -256,7 +263,9 @@ class PoxiAlwaysOnVoiceService : Service() {
 
             isListening = false
 
-            restartListeningAfterDelay()
+            if (continuousMode) {
+                restartListeningAfterDelay()
+            }
         }
     }
 
@@ -283,7 +292,7 @@ class PoxiAlwaysOnVoiceService : Service() {
 
         if (response.isNotBlank()) {
             speak(response)
-        } else {
+        } else if (continuousMode) {
             restartListeningAfterDelay()
         }
     }
@@ -352,7 +361,10 @@ class PoxiAlwaysOnVoiceService : Service() {
 
                                     isSpeaking = false
 
-                                    if (serviceRunning) {
+                                    if (
+                                        serviceRunning &&
+                                        continuousMode
+                                    ) {
                                         restartListeningAfterDelay()
                                     }
                                 }
@@ -366,7 +378,10 @@ class PoxiAlwaysOnVoiceService : Service() {
 
                                     isSpeaking = false
 
-                                    if (serviceRunning) {
+                                    if (
+                                        serviceRunning &&
+                                        continuousMode
+                                    ) {
                                         restartListeningAfterDelay()
                                     }
                                 }
@@ -421,6 +436,7 @@ class PoxiAlwaysOnVoiceService : Service() {
         Runnable {
 
             if (!serviceRunning) return@Runnable
+            if (!continuousMode) return@Runnable
             if (isSpeaking) return@Runnable
             if (isListening) return@Runnable
 
@@ -498,6 +514,7 @@ class PoxiAlwaysOnVoiceService : Service() {
     override fun onDestroy() {
 
         serviceRunning = false
+        continuousMode = false
         isListening = false
         isSpeaking = false
 
