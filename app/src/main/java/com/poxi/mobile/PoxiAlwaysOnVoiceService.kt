@@ -13,31 +13,31 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
 class PoxiAlwaysOnVoiceService : Service() {
 
     companion object {
-
         const val ACTION_LISTEN =
             "com.poxi.mobile.action.LISTEN"
 
         private const val CHANNEL_ID = "poxi_voice"
         private const val NOTIFICATION_ID = 1001
-        private const val TTS_RESTART_DELAY = 1200L
+        private const val LISTEN_RESTART_DELAY = 700L
     }
 
     private val mainHandler =
         Handler(Looper.getMainLooper())
 
     private var speechRecognizer:
-            SpeechRecognizer? = null
+        SpeechRecognizer? = null
 
     private var textToSpeech:
-            TextToSpeech? = null
+        TextToSpeech? = null
 
     private lateinit var router:
-            PoxiCommandRouter
+        PoxiCommandRouter
 
     private var isListening = false
     private var isSpeaking = false
@@ -74,7 +74,6 @@ class PoxiAlwaysOnVoiceService : Service() {
         serviceRunning = true
 
         if (intent?.action == ACTION_LISTEN) {
-
             mainHandler.post {
                 startListeningSafely()
             }
@@ -98,8 +97,10 @@ class PoxiAlwaysOnVoiceService : Service() {
             return
         }
 
-        speechRecognizer?.cancel()
-        speechRecognizer?.destroy()
+        try {
+            speechRecognizer?.destroy()
+        } catch (_: Exception) {
+        }
 
         speechRecognizer =
             SpeechRecognizer.createSpeechRecognizer(this)
@@ -118,9 +119,10 @@ class PoxiAlwaysOnVoiceService : Service() {
                 }
 
                 override fun onBeginningOfSpeech() {
+                    isListening = true
 
                     updateNotification(
-                        "👂 Hearing command..."
+                        "🎤 Listening..."
                     )
                 }
 
@@ -135,33 +137,32 @@ class PoxiAlwaysOnVoiceService : Service() {
                 }
 
                 override fun onEndOfSpeech() {
-
                     isListening = false
 
                     updateNotification(
-                        "⚙️ Processing..."
+                        "Processing..."
                     )
                 }
 
                 override fun onError(
                     error: Int
                 ) {
-
                     isListening = false
 
                     if (!serviceRunning) {
                         return
                     }
 
-                    updateNotification(
-                        "POXI ready — press Talk to POXI"
-                    )
+                    if (isSpeaking) {
+                        return
+                    }
+
+                    restartListeningAfterDelay()
                 }
 
                 override fun onResults(
                     results: Bundle?
                 ) {
-
                     isListening = false
 
                     val matches =
@@ -176,14 +177,9 @@ class PoxiAlwaysOnVoiceService : Service() {
                             .orEmpty()
 
                     if (command.isNotEmpty()) {
-
                         processCommand(command)
-
                     } else {
-
-                        updateNotification(
-                            "POXI ready — press Talk to POXI"
-                        )
+                        restartListeningAfterDelay()
                     }
                 }
 
@@ -227,7 +223,12 @@ class PoxiAlwaysOnVoiceService : Service() {
 
                 putExtra(
                     RecognizerIntent.EXTRA_LANGUAGE,
-                    Locale.getDefault()
+                    "hi-IN"
+                )
+
+                putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
+                    "hi-IN"
                 )
 
                 putExtra(
@@ -243,6 +244,8 @@ class PoxiAlwaysOnVoiceService : Service() {
 
         try {
 
+            isListening = true
+
             updateNotification(
                 "🎤 Listening..."
             )
@@ -253,14 +256,12 @@ class PoxiAlwaysOnVoiceService : Service() {
 
             isListening = false
 
-            updateNotification(
-                "POXI ready — press Talk to POXI"
-            )
+            restartListeningAfterDelay()
         }
     }
 
     // --------------------------------------------------
-    // COMMAND
+    // COMMAND PROCESSING
     // --------------------------------------------------
 
     private fun processCommand(
@@ -277,15 +278,13 @@ class PoxiAlwaysOnVoiceService : Service() {
             try {
                 router.handle(command)
             } catch (_: Exception) {
-                "Sorry, I couldn't process that command."
+                "Command samajh nahi aaya."
             }
 
         if (response.isNotBlank()) {
             speak(response)
         } else {
-            updateNotification(
-                "POXI ready — press Talk to POXI"
-            )
+            restartListeningAfterDelay()
         }
     }
 
@@ -300,22 +299,87 @@ class PoxiAlwaysOnVoiceService : Service() {
 
                 if (status == TextToSpeech.SUCCESS) {
 
+                    val hindi =
+                        Locale("hi", "IN")
+
                     val result =
                         textToSpeech?.setLanguage(
-                            Locale.getDefault()
+                            hindi
                         )
 
                     if (
-                        result == TextToSpeech.LANG_MISSING_DATA ||
-                        result == TextToSpeech.LANG_NOT_SUPPORTED
+                        result ==
+                            TextToSpeech.LANG_MISSING_DATA ||
+                        result ==
+                            TextToSpeech.LANG_NOT_SUPPORTED
                     ) {
-                        textToSpeech?.language = Locale.US
+
+                        textToSpeech?.language =
+                            Locale.ENGLISH
                     }
+
+                    textToSpeech?.setSpeechRate(
+                        0.92f
+                    )
+
+                    textToSpeech?.setPitch(
+                        1.0f
+                    )
+
+                    textToSpeech?.setOnUtteranceProgressListener(
+                        object :
+                            UtteranceProgressListener() {
+
+                            override fun onStart(
+                                utteranceId: String?
+                            ) {
+
+                                mainHandler.post {
+
+                                    isSpeaking = true
+
+                                    updateNotification(
+                                        "🔊 POXI speaking..."
+                                    )
+                                }
+                            }
+
+                            override fun onDone(
+                                utteranceId: String?
+                            ) {
+
+                                mainHandler.post {
+
+                                    isSpeaking = false
+
+                                    if (serviceRunning) {
+                                        restartListeningAfterDelay()
+                                    }
+                                }
+                            }
+
+                            override fun onError(
+                                utteranceId: String?
+                            ) {
+
+                                mainHandler.post {
+
+                                    isSpeaking = false
+
+                                    if (serviceRunning) {
+                                        restartListeningAfterDelay()
+                                    }
+                                }
+                            }
+                        }
+                    )
                 }
             }
     }
 
-    private fun speak(text: String) {
+    private fun speak(
+        text: String
+    ) {
 
         if (!serviceRunning) return
 
@@ -337,27 +401,34 @@ class PoxiAlwaysOnVoiceService : Service() {
             null,
             "POXI_RESPONSE"
         )
+    }
+
+    private fun restartListeningAfterDelay() {
 
         mainHandler.removeCallbacks(
             restartAfterSpeechRunnable
         )
 
+        if (!serviceRunning) return
+
         mainHandler.postDelayed(
             restartAfterSpeechRunnable,
-            TTS_RESTART_DELAY
+            LISTEN_RESTART_DELAY
         )
     }
 
     private val restartAfterSpeechRunnable =
         Runnable {
 
-            isSpeaking = false
-
             if (!serviceRunning) return@Runnable
+            if (isSpeaking) return@Runnable
+            if (isListening) return@Runnable
 
             updateNotification(
-                "POXI ready — press Talk to POXI"
+                "🎤 Listening..."
             )
+
+            startListeningSafely()
         }
 
     // --------------------------------------------------
@@ -374,11 +445,18 @@ class PoxiAlwaysOnVoiceService : Service() {
         val channel =
             NotificationChannel(
                 CHANNEL_ID,
-                "POXI Voice",
+                "POXI Voice Assistant",
                 NotificationManager.IMPORTANCE_LOW
-            )
+            ).apply {
 
-        manager.createNotificationChannel(channel)
+                description =
+                    "POXI voice assistant status"
+
+            }
+
+        manager.createNotificationChannel(
+            channel
+        )
     }
 
     private fun buildNotification(
@@ -389,7 +467,7 @@ class PoxiAlwaysOnVoiceService : Service() {
             this,
             CHANNEL_ID
         )
-            .setContentTitle("POXI Voice")
+            .setContentTitle("POXI")
             .setContentText(status)
             .setSmallIcon(
                 android.R.drawable.ic_btn_speak_now
@@ -414,7 +492,7 @@ class PoxiAlwaysOnVoiceService : Service() {
     }
 
     // --------------------------------------------------
-    // DESTROY
+    // SERVICE LIFECYCLE
     // --------------------------------------------------
 
     override fun onDestroy() {
@@ -423,7 +501,9 @@ class PoxiAlwaysOnVoiceService : Service() {
         isListening = false
         isSpeaking = false
 
-        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.removeCallbacksAndMessages(
+            null
+        )
 
         try {
             speechRecognizer?.cancel()

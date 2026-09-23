@@ -128,6 +128,10 @@ class PoxiCommandRouter(private val context: Context) {
             c.startsWith("note kar") ||
             c.startsWith("ek note karo") ||
             c.startsWith("ek note likho") ||
+            c.startsWith("note likho") ||
+            c.startsWith("note bana") ||
+            c.startsWith("note save") ||
+            c.startsWith("likh lo") ||
             c.startsWith("write a note") ||
             c.startsWith("take a note")
         ) {
@@ -147,7 +151,9 @@ class PoxiCommandRouter(private val context: Context) {
             c == "last note" ||
             c == "mera last note" ||
             c == "last note kya hai" ||
-            c == "mera last note batao"
+            c == "mera last note batao" ||
+            c.contains("last note batao") ||
+            c.contains("last note sunao")
         ) {
 
             val note = memory.getLastNote()
@@ -225,21 +231,24 @@ class PoxiCommandRouter(private val context: Context) {
         // =========================
 
         if (
-            c == "torch jala" ||
-            c == "torch on" ||
-            c == "flashlight on" ||
-            c == "flashlight chalu karo" ||
-            c == "torch chalu karo"
+            c == "torch" ||
+            c.contains("torch on") ||
+            c.contains("torch jala") ||
+            c.contains("torch chalu") ||
+            c.contains("torch laga") ||
+            c.contains("flashlight on") ||
+            c.contains("flashlight chalu") ||
+            c.contains("flashlight jala")
         ) {
             return setFlashlight(true)
         }
 
         if (
-            c == "torch bujha" ||
-            c == "torch off" ||
-            c == "flashlight off" ||
-            c == "flashlight band karo" ||
-            c == "torch band karo"
+            c.contains("torch off") ||
+            c.contains("torch bujha") ||
+            c.contains("torch band") ||
+            c.contains("flashlight off") ||
+            c.contains("flashlight band")
         ) {
             return setFlashlight(false)
         }
@@ -250,9 +259,12 @@ class PoxiCommandRouter(private val context: Context) {
 
         if (
             c == "wifi" ||
-            c == "wifi settings" ||
-            c == "wifi setting kholo" ||
-            c.contains("wifi settings kholo")
+            c.contains("wifi kholo") ||
+            c.contains("wifi khol") ||
+            c.contains("wifi setting") ||
+            c.contains("wifi settings") ||
+            c.contains("wi fi kholo") ||
+            c.contains("wi fi setting")
         ) {
             openSettings(Settings.ACTION_WIFI_SETTINGS)
             return "Wi-Fi settings khol raha hoon."
@@ -319,9 +331,12 @@ class PoxiCommandRouter(private val context: Context) {
         // =========================
 
         if (
-            c == "youtube chalao" ||
-            c == "youtube kholo" ||
-            c == "youtube open karo"
+            c == "youtube" ||
+            c.contains("youtube chalao") ||
+            c.contains("youtube kholo") ||
+            c.contains("youtube khol") ||
+            c.contains("youtube open") ||
+            c.contains("youtube chala")
         ) {
             return if (openAppByName("youtube")) {
                 "YouTube khol raha hoon."
@@ -460,9 +475,13 @@ class PoxiCommandRouter(private val context: Context) {
 
         if (
             c == "time" ||
-            c == "what time is it" ||
-            c == "abhi time" ||
-            c == "abhi kitne baje hain"
+            c.contains("what time") ||
+            c.contains("abhi time") ||
+            c.contains("kitne baje") ||
+            c.contains("kitna baje") ||
+            c.contains("time kya") ||
+            c.contains("samay kya") ||
+            c.contains("abhi kya time")
         ) {
             val now = Calendar.getInstance()
 
@@ -581,6 +600,10 @@ class PoxiCommandRouter(private val context: Context) {
             "ek note karo",
             "note karo",
             "note kar",
+            "note likho",
+            "note bana",
+            "note save",
+            "likh lo",
             "write a note",
             "take a note"
         )
