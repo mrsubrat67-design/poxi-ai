@@ -391,7 +391,7 @@ class PoxiAlwaysOnVoiceService :
                     ""
                 )
                     .trim()
-
+android.util.Log.d("POXI_VOSK", "Vosk heard: [$text]")
             if (text.isBlank()) {
                 return
             }
@@ -415,7 +415,7 @@ class PoxiAlwaysOnVoiceService :
     private fun processCommand(
         command: String
     ) {
-
+android.util.Log.d("POXI_CMD", "Router received: [$command]")
         val cleanCommand =
             command
                 .trim()
